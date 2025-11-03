@@ -1,71 +1,190 @@
-<!DOCTYPE html>
-<html lang="pt-br">
+<!doctype html>
+<html lang="pt-BR">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Listas de Presentes</title>
-<style>
-body { font-family: Arial, sans-serif; padding: 20px; background: #fffaf8; text-align: center; }
-h1 { color: #b22222; }
-h2 { color: #b22222; margin-top: 30px; }
-ul { list-style: none; padding: 0; max-width: 600px; margin: auto; }
-li { padding: 12px; margin: 10px 0; border-radius: 8px; background: #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; }
-a { text-decoration: none; color: #b22222; font-weight: bold; }
-button { background: #b22222; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; }
-button.reservado { background: gray; cursor: default; }
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Lista de Presentes do Grupo</title>
+  <style>
+    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+    body { margin: 0; background: #f7f7f8; color: #111; }
+    header { padding: 16px 20px; background: #fff; border-bottom: 1px solid #e5e5e5; position: sticky; top:0; }
+    h1 { font-size: 18px; margin: 0 0 6px; }
+    #groupInfo { font-size: 13px; color: #444; }
+    main { max-width: 920px; margin: 20px auto; padding: 0 16px 40px; }
+    .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+    input[type="search"] { flex: 1; min-width: 220px; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+    .card { background:#fff; border:1px solid #e8e8ea; border-radius:12px; padding:14px; display:flex; flex-direction:column; gap:8px; }
+    .person { font-weight: 600; font-size: 14px; color:#333; }
+    .title { font-size: 15px; }
+    .title a { color: inherit; text-decoration: none; border-bottom: 1px dashed #bbb; }
+    .meta { font-size: 13px; color:#666; display:flex; gap:10px; flex-wrap: wrap; }
+    .badge { font-size: 12px; padding: 3px 8px; border-radius: 999px; border:1px solid; width: fit-content; }
+    .disponivel { color:#166534; border-color:#9ae6b4; background:#f0fff4; }
+    .reservado { color:#92400e; border-color:#fcd34d; background:#fffbeb; }
+    .row { display:flex; gap:8px; align-items:center; }
+    button { padding:10px 12px; border-radius:10px; border:1px solid #ddd; background:#111; color:#fff; cursor:pointer; }
+    button.secondary { background:#fff; color:#111; }
+    button[disabled] { opacity:.55; cursor:not-allowed; }
+    footer { margin-top: 22px; font-size: 12px; color: #666; text-align:center; }
+    .small { font-size: 12px; color:#666; }
+  </style>
 </head>
 <body>
-<h1>🎁 Listas de Presentes</h1>
-<div id="listas"></div>
+  <header>
+    <h1>Lista de Presentes do Grupo</h1>
+    <div id="groupInfo" class="small">Marque um item para evitar presentes repetidos — quem reservou não é mostrado.</div>
+  </header>
+  <main>
+    <div class="toolbar">
+      <input id="q" type="search" placeholder="Filtrar por pessoa ou item…" />
+      <button id="refresh" class="secondary">Recarregar</button>
+    </div>
+    <div id="list" class="grid" role="list"></div>
+    <footer>Feito com Google Sheets + Apps Script + GitHub Pages</footer>
+  </main>
 
-<script>
-const API_URL = 'https://script.google.com/macros/s/AKfycbzS5bWuJ7f4GsoKcF0yIOieK7uw0xlyWWAtXW_DdkQLYFiIjwPD4rdnOLJ9u9r-zz-d/exec';
+  <script>
+  // 1) COLE A URL DO SEU APPS SCRIPT (que termina com /exec)
+  const API_URL = 'https://script.google.com/macros/s/AKfycbziglTjrNcdAUNPuZozcHeGLiD-N1XMWlFscEh8V4QJwVUiP0HfqQjxgFpM92FpFUqF/exec';
 
-async function carregarListas(){
-  const res = await fetch(API_URL);
-  const data = await res.json();
-  const container = document.getElementById('listas');
-  container.innerHTML = '';
+  // 2) Helpers
+  const $ = sel => document.querySelector(sel);
+  const listEl = $('#list'), qEl = $('#q'), refreshEl = $('#refresh');
 
-  const listas = [...new Set(data.map(d => d.lista))];
+  function getTokenKey(id) { return `token_item_${id}`; }
+  function saveToken(id, token) { localStorage.setItem(getTokenKey(id), token); }
+  function readToken(id) { return localStorage.getItem(getTokenKey(id)); }
+  function forgetToken(id) { localStorage.removeItem(getTokenKey(id)); }
 
-  listas.forEach(nomeLista => {
-    const h2 = document.createElement('h2');
-    h2.textContent = nomeLista;
-    container.appendChild(h2);
+  async function fetchList() {
+    listEl.innerHTML = 'Carregando…';
+    const res = await fetch(`${API_URL}?action=list`, { method: 'GET' });
+    if (!res.ok) { listEl.innerHTML = 'Erro ao carregar a lista.'; return; }
+    const data = await res.json();
+    renderList(data.itens || []);
+  }
 
-    const ul = document.createElement('ul');
-
-    data.filter(d => d.lista === nomeLista).forEach(item => {
-      const li = document.createElement('li');
-
-      const link = document.createElement('a');
-      link.href = item.link;
-      link.target = "_blank";
-      link.textContent = item.item;
-
-      const btn = document.createElement('button');
-      btn.textContent = item.reservado || "Reservar";
-      if(item.reservado) btn.classList.add('reservado');
-      btn.onclick = async () => {
-        if(btn.classList.contains('reservado')) return;
-        await fetch(`${API_URL}?item=${encodeURIComponent(item.item)}`);
-        btn.textContent = "Reservado 🎁";
-        btn.classList.add('reservado');
-        carregarListas(); // atualiza todos
-      };
-
-      li.appendChild(link);
-      li.appendChild(btn);
-      ul.appendChild(li);
+  function renderList(items) {
+    const query = (qEl.value || '').toLowerCase().trim();
+    const filtered = items.filter(it => {
+      const hay = `${it.pessoa} ${it.item}`.toLowerCase();
+      return !query || hay.includes(query);
     });
 
-    container.appendChild(ul);
-  });
-}
+    if (!filtered.length) {
+      listEl.innerHTML = '<div class="small">Nenhum item encontrado.</div>';
+      return;
+    }
 
-carregarListas();
-</script>
+    listEl.innerHTML = '';
+    for (const it of filtered) {
+      const card = document.createElement('article');
+      card.className = 'card';
+      card.setAttribute('role','listitem');
+
+      const person = document.createElement('div');
+      person.className = 'person';
+      person.textContent = it.pessoa;
+
+      const title = document.createElement('div');
+      title.className = 'title';
+      if (it.link) {
+        const a = document.createElement('a');
+        a.href = it.link; a.target = '_blank'; a.rel = 'noopener';
+        a.textContent = it.item;
+        title.appendChild(a);
+      } else {
+        title.textContent = it.item;
+      }
+
+      const meta = document.createElement('div');
+      meta.className = 'meta';
+      if (it.preco) meta.append(`R$ ${it.preco}`);
+      const badge = document.createElement('span');
+      const reservado = (it.status || '').toLowerCase() === 'reservado';
+      badge.className = `badge ${reservado ? 'reservado' : 'disponivel'}`;
+      badge.textContent = reservado ? 'Reservado' : 'Disponível';
+      meta.appendChild(badge);
+
+      const row = document.createElement('div');
+      row.className = 'row';
+      const reserveBtn = document.createElement('button');
+      reserveBtn.textContent = 'Reservar';
+      reserveBtn.disabled = reservado;
+
+      const unreserveBtn = document.createElement('button');
+      unreserveBtn.textContent = 'Desreservar';
+      unreserveBtn.className = 'secondary';
+      // habilita desreservar somente se eu tiver o token salvo
+      const myToken = readToken(it.id);
+      unreserveBtn.disabled = !myToken;
+
+      reserveBtn.addEventListener('click', () => reserveItem(it.id, reserveBtn, badge, unreserveBtn));
+      unreserveBtn.addEventListener('click', () => unreserveItem(it.id, unreserveBtn, badge, reserveBtn));
+
+      row.append(reserveBtn, unreserveBtn);
+
+      card.append(person, title, meta, row);
+      listEl.appendChild(card);
+    }
+  }
+
+  // IMPORTANTE: Para reduzir risco de CORS/preflight, vamos enviar como
+  // application/x-www-form-urlencoded (Apps Script entende em e.parameter)
+  async function reserveItem(id, btn, badge, unreserveBtn) {
+    btn.disabled = true; btn.textContent = 'Reservando…';
+    try {
+      const body = new URLSearchParams({ action: 'reserve', id: String(id) });
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+        body
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'Falha ao reservar');
+      saveToken(id, data.token);
+      badge.className = 'badge reservado';
+      badge.textContent = 'Reservado';
+      unreserveBtn.disabled = false;
+    } catch (e) {
+      alert('Não foi possível reservar: ' + e.message);
+      btn.disabled = false; btn.textContent = 'Reservar';
+      return;
+    }
+    btn.textContent = 'Reservado';
+  }
+
+  async function unreserveItem(id, btn, badge, reserveBtn) {
+    let token = readToken(id);
+    if (!token) {
+      token = prompt('Informe o token de reserva (ou a palavra-chave que você salvou):');
+      if (!token) return;
+    }
+    btn.disabled = true; btn.textContent = 'Desreservando…';
+    try {
+      const body = new URLSearchParams({ action: 'unreserve', id: String(id), token: token });
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+        body
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'Falha ao desreservar');
+      forgetToken(id);
+      badge.className = 'badge disponivel';
+      badge.textContent = 'Disponível';
+      reserveBtn.disabled = false; reserveBtn.textContent = 'Reservar';
+      btn.disabled = true; btn.textContent = 'Desreservar';
+    } catch (e) {
+      alert('Não foi possível desreservar: ' + e.message);
+      btn.disabled = false; btn.textContent = 'Desreservar';
+    }
+  }
+
+  qEl.addEventListener('input', () => fetch(`${API_URL}?action=list`).then(r=>r.json()).then(d=>renderList(d.itens||[])));
+  refreshEl.addEventListener('click', fetchList);
+  fetchList();
+  </script>
 </body>
 </html>
