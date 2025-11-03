@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Listas de Presentes</title>
+<style>
+body { font-family: Arial, sans-serif; padding: 20px; background: #fffaf8; text-align: center; }
+h1 { color: #b22222; }
+h2 { color: #b22222; margin-top: 30px; }
+ul { list-style: none; padding: 0; max-width: 600px; margin: auto; }
+li { padding: 12px; margin: 10px 0; border-radius: 8px; background: #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; }
+a { text-decoration: none; color: #b22222; font-weight: bold; }
+button { background: #b22222; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; }
+button.reservado { background: gray; cursor: default; }
+</style>
+</head>
+<body>
+<h1>🎁 Listas de Presentes</h1>
+<div id="listas"></div>
+
+<script>
+const API_URL = 'https://script.google.com/macros/s/AKfycbzS5bWuJ7f4GsoKcF0yIOieK7uw0xlyWWAtXW_DdkQLYFiIjwPD4rdnOLJ9u9r-zz-d/exec';
+
+async function carregarListas(){
+  const res = await fetch(API_URL);
+  const data = await res.json();
+  const container = document.getElementById('listas');
+  container.innerHTML = '';
+
+  const listas = [...new Set(data.map(d => d.lista))];
+
+  listas.forEach(nomeLista => {
+    const h2 = document.createElement('h2');
+    h2.textContent = nomeLista;
+    container.appendChild(h2);
+
+    const ul = document.createElement('ul');
+
+    data.filter(d => d.lista === nomeLista).forEach(item => {
+      const li = document.createElement('li');
+
+      const link = document.createElement('a');
+      link.href = item.link;
+      link.target = "_blank";
+      link.textContent = item.item;
+
+      const btn = document.createElement('button');
+      btn.textContent = item.reservado || "Reservar";
+      if(item.reservado) btn.classList.add('reservado');
+      btn.onclick = async () => {
+        if(btn.classList.contains('reservado')) return;
+        await fetch(`${API_URL}?item=${encodeURIComponent(item.item)}`);
+        btn.textContent = "Reservado 🎁";
+        btn.classList.add('reservado');
+        carregarListas(); // atualiza todos
+      };
+
+      li.appendChild(link);
+      li.appendChild(btn);
+      ul.appendChild(li);
+    });
+
+    container.appendChild(ul);
+  });
+}
+
+carregarListas();
+</script>
+</body>
+</html>
